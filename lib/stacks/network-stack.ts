@@ -85,23 +85,30 @@ export class NetworkStack extends cdk.Stack {
     // Create security groups
     this.databaseSecurityGroup = new ec2.SecurityGroup(this, 'DatabaseSecurityGroup', {
       vpc: this.vpc,
-      description: 'Security group for database instances',
-      allowAllOutbound: true,
+      description: 'Security group for database access',
+      securityGroupName: `${config.projectName}-${config.environment}-database-sg`,
     });
-    
+
     this.applicationSecurityGroup = new ec2.SecurityGroup(this, 'ApplicationSecurityGroup', {
       vpc: this.vpc,
-      description: 'Security group for application instances',
-      allowAllOutbound: true,
+      description: 'Security group for application access',
+      securityGroupName: `${config.projectName}-${config.environment}-application-sg`,
     });
-    
-    // Allow application security group to access database security group
+
+    // Allow Hasura and application access
+    this.applicationSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(8080),
+      'Allow Hasura GraphQL access'
+    );
+
+    // Allow database access from application security group
     this.databaseSecurityGroup.addIngressRule(
       this.applicationSecurityGroup,
       ec2.Port.tcp(5432),
-      'Allow access from application security group'
+      'Allow PostgreSQL access from application'
     );
-    
+
     // Add IP whitelist to security groups if specified
     if (config.network?.ipWhitelist && config.network.ipWhitelist.length > 0) {
       for (const ip of config.network.ipWhitelist) {
@@ -143,5 +150,9 @@ export class NetworkStack extends cdk.Stack {
       description: 'The ID of the application security group',
       exportName: `${config.projectName}-${config.environment}-app-sg-id`,
     });
+
+    // Add tags to security groups
+    cdk.Tags.of(this.databaseSecurityGroup).add('Name', `${config.projectName}-${config.environment}-database-sg`);
+    cdk.Tags.of(this.applicationSecurityGroup).add('Name', `${config.projectName}-${config.environment}-application-sg`);
   }
 } 

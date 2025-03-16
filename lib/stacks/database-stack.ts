@@ -1,8 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { Construct } from 'constructs';
 import { InfrastructureConfig } from '../config';
 
 /**
@@ -56,11 +56,36 @@ export class DatabaseStack extends cdk.Stack {
       // Set default values
       const engine = config.database.engine || 
         rds.DatabaseInstanceEngine.postgres({
-          version: rds.PostgresEngineVersion.VER_17_2,
+          version: rds.PostgresEngineVersion.VER_15,
         });
       
+      // Create parameter group for PostgreSQL
+      const parameterGroup = new rds.ParameterGroup(this, 'ParameterGroup', {
+        engine: rds.DatabaseInstanceEngine.postgres({
+          version: rds.PostgresEngineVersion.VER_15,
+        }),
+        parameters: {
+          'max_connections': '200',
+          'shared_buffers': '256MB',
+          'work_mem': '16MB',
+          'maintenance_work_mem': '128MB',
+          'effective_cache_size': '512MB',
+          'max_prepared_transactions': '0',
+          'statement_timeout': '60000',  // 60 seconds
+          'idle_in_transaction_session_timeout': '300000',  // 5 minutes
+        },
+      });
+      
+      // Update security group to explicitly allow PostgreSQL access
+      securityGroup.addIngressRule(
+        ec2.Peer.anyIpv4(),
+        ec2.Port.tcp(5432),
+        'Allow all incoming traffic on PostgreSQL port'
+      );
+      
+      // Set instance type to Graviton for better price/performance
       const instanceType = config.database.instanceType || 
-        ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO);
+        ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.SMALL);
       
       const allocatedStorage = config.database.allocatedStorage || 20;
       
@@ -75,21 +100,10 @@ export class DatabaseStack extends cdk.Stack {
         config.database.deletionProtection : 
         config.environment === 'prod';
       
-      // Create parameter group for PostgreSQL
-      const parameterGroup = new rds.ParameterGroup(this, 'ParameterGroup', {
-        engine: rds.DatabaseInstanceEngine.postgres({
-          version: rds.PostgresEngineVersion.VER_17_2,
-        }),
-        parameters: {
-          'max_connections': '100',
-          'shared_buffers': '16',
-        },
-      });
-      
       // Create the database instance
       this.databaseInstance = new rds.DatabaseInstance(this, 'Database', {
         engine: rds.DatabaseInstanceEngine.postgres({
-          version: rds.PostgresEngineVersion.VER_17_2,
+          version: rds.PostgresEngineVersion.VER_15,
         }),
         instanceType,
         vpc,
@@ -102,6 +116,7 @@ export class DatabaseStack extends cdk.Stack {
         credentials: rds.Credentials.fromSecret(this.databaseSecret),
         databaseName: config.database.databaseName || config.projectName.replace(/-/g, '_'),
         allocatedStorage,
+        maxAllocatedStorage: 100,  // Added max storage limit
         storageType: rds.StorageType.GP2,
         backupRetention: cdk.Duration.days(backupRetention),
         deleteAutomatedBackups: config.environment !== 'prod',
@@ -110,6 +125,7 @@ export class DatabaseStack extends cdk.Stack {
           cdk.RemovalPolicy.RETAIN : 
           cdk.RemovalPolicy.DESTROY,
         multiAz,
+        allowMajorVersionUpgrade: false,  // Added from work example
         autoMinorVersionUpgrade: true,
         parameterGroup,
         publiclyAccessible: config.database.publiclyAccessible || false,

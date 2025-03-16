@@ -48,71 +48,55 @@ export class ComputeStack extends cdk.Stack {
         assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
         managedPolicies: [
           iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+          iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
         ],
       });
       
-      // Create instance profile
-      const instanceProfile = new iam.CfnInstanceProfile(this, 'InstanceProfile', {
-        roles: [instanceRole.roleName],
-        instanceProfileName: `${config.projectName}-${config.environment}-instance-profile`,
-      });
+      // Set instance type based on environment
+      const instanceType = config.compute?.instanceType || 
+        ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, 
+          config.environment === 'prod' ? ec2.InstanceSize.MEDIUM : ec2.InstanceSize.SMALL);
       
-      // Get latest Amazon Linux 2 AMI
-      const ami = config.compute.amiId ? 
-        ec2.MachineImage.genericLinux({
-          [this.region]: config.compute.amiId,
-        }) : 
-        ec2.MachineImage.latestAmazonLinux2({
-          cpuType: ec2.AmazonLinuxCpuType.X86_64,
-        });
-      
-      // Create user data script
-      const userData = ec2.UserData.forLinux();
-      userData.addCommands(
-        'yum update -y',
-        'yum install -y amazon-cloudwatch-agent',
-        'systemctl enable amazon-cloudwatch-agent',
-        'systemctl start amazon-cloudwatch-agent'
-      );
-      
-      if (config.compute.userData) {
-        userData.addCommands(config.compute.userData);
-      }
-      
-      // Create auto-scaling group if enabled
-      if (config.compute.createAsg) {
+      // Create auto scaling group if enabled
+      if (config.compute.useAutoScaling) {
         this.autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'AutoScalingGroup', {
           vpc,
           vpcSubnets: {
             subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
           },
           securityGroup,
-          instanceType: config.compute.instanceType || 
-            ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-          machineImage: ami,
-          keyName: config.compute.keyName,
+          instanceType,
+          machineImage: ec2.MachineImage.fromSsmParameter(
+            '/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id'
+          ),
           role: instanceRole,
-          minCapacity: config.compute.minCapacity || 1,
-          maxCapacity: config.compute.maxCapacity || 1,
-          desiredCapacity: config.compute.desiredCapacity || 1,
-          userData,
-          blockDevices: [
-            {
-              deviceName: '/dev/xvda',
-              volume: autoscaling.BlockDeviceVolume.ebs(20, {
-                encrypted: true,
-                volumeType: autoscaling.EbsDeviceVolumeType.GP3,
-                deleteOnTermination: true,
-              }),
-            },
-          ],
+          minCapacity: config.compute.minInstances || 1,
+          maxCapacity: config.compute.maxInstances || 3,
+          desiredCapacity: config.compute.desiredInstances || 2,
+          healthCheck: autoscaling.HealthCheck.elb({ grace: cdk.Duration.seconds(60) }),
+          updatePolicy: autoscaling.UpdatePolicy.rollingUpdate(),
         });
         
-        // Output auto-scaling group name
-        new cdk.CfnOutput(this, 'AutoScalingGroupName', {
-          value: this.autoScalingGroup.autoScalingGroupName,
-          description: 'The name of the auto-scaling group',
-          exportName: `${config.projectName}-${config.environment}-asg-name`,
+        // Add CPU-based scaling
+        this.autoScalingGroup.scaleOnCpuUtilization('CpuScaling', {
+          targetUtilizationPercent: 70,
+          cooldown: cdk.Duration.seconds(300),
+        });
+        
+        // Add memory-based scaling
+        this.autoScalingGroup.scaleOnMetric('MemoryScaling', {
+          metric: new cdk.aws_cloudwatch.Metric({
+            namespace: 'System/Linux',
+            metricName: 'MemoryUtilization',
+            statistic: 'Average',
+            period: cdk.Duration.minutes(5),
+          }),
+          scalingSteps: [
+            { upper: 50, change: -1 },
+            { lower: 70, change: +1 },
+          ],
+          adjustmentType: autoscaling.AdjustmentType.CHANGE_IN_CAPACITY,
+          cooldown: cdk.Duration.seconds(300),
         });
       } else {
         // Create single EC2 instance
@@ -124,10 +108,12 @@ export class ComputeStack extends cdk.Stack {
           securityGroup,
           instanceType: config.compute.instanceType || 
             ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-          machineImage: ami,
+          machineImage: ec2.MachineImage.fromSsmParameter(
+            '/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id'
+          ),
           keyName: config.compute.keyName,
           role: instanceRole,
-          userData,
+          userData: ec2.UserData.forLinux(),
           blockDevices: [
             {
               deviceName: '/dev/xvda',

@@ -320,28 +320,28 @@ export interface ComputeConfig {
   readonly keyName?: string;
   
   /**
-   * Whether to create an auto-scaling group
+   * Whether to use auto-scaling
    * @default false
    */
-  readonly createAsg?: boolean;
+  readonly useAutoScaling?: boolean;
   
   /**
    * Minimum number of instances in the auto-scaling group
    * @default 1
    */
-  readonly minCapacity?: number;
+  readonly minInstances?: number;
   
   /**
    * Maximum number of instances in the auto-scaling group
-   * @default 1
+   * @default 3
    */
-  readonly maxCapacity?: number;
+  readonly maxInstances?: number;
   
   /**
-   * Desired capacity of the auto-scaling group
-   * @default 1
+   * Desired number of instances in the auto-scaling group
+   * @default 2
    */
-  readonly desiredCapacity?: number;
+  readonly desiredInstances?: number;
   
   /**
    * User data script to run on instance launch
