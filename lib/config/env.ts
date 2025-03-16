@@ -56,11 +56,11 @@ export function createConfigFromEnv(): InfrastructureConfig {
     database: {
       createDatabase: true,
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_17_2,
+        version: rds.PostgresEngineVersion.VER_15,
       }),
       instanceType: InstanceType.of(
-        InstanceClass.T3, // Use t3 class for better performance
-        InstanceSize.MICRO,
+        InstanceClass.BURSTABLE4_GRAVITON, // Use Graviton for better price/performance
+        InstanceSize.SMALL,
       ),
       allocatedStorage: 20,
       publiclyAccessible: true,
@@ -92,14 +92,16 @@ export function createConfigFromEnv(): InfrastructureConfig {
     
     // Compute configuration
     compute: {
-      createCompute: true, // Enable EC2 instance
+      createCompute: true,
       instanceType: InstanceType.of(
-        InstanceClass.T2, // Use t2 class for free tier
-        InstanceSize.MICRO, // Use micro size for free tier
+        InstanceClass.BURSTABLE4_GRAVITON,
+        InstanceSize.SMALL,
       ),
-      createAsg: false, // No auto-scaling group to stay within free tier
+      useAutoScaling: false, // No auto-scaling group to stay within free tier
+      minInstances: 1,
+      maxInstances: 1,
+      desiredInstances: 1,
       keyName: getEnv('EC2_KEY_PAIR_NAME', ''),
-      // Use x86_64 architecture for free tier eligibility
       userData: getEnv('EC2_USER_DATA', ''),
     },
     
