@@ -106,18 +106,18 @@ export class ComputeStack extends cdk.Stack {
             subnetType: ec2.SubnetType.PUBLIC,
           },
           securityGroup,
-          instanceType: config.compute.instanceType || 
-            ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-          machineImage: ec2.MachineImage.fromSsmParameter(
-            '/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id'
-          ),
-          keyName: config.compute.keyName,
+          instanceType: config.compute?.instanceType || 
+            ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+          machineImage: ec2.MachineImage.latestAmazonLinux2023({
+            cpuType: ec2.AmazonLinuxCpuType.X86_64,
+          }),
+          keyName: config.compute?.keyName,
           role: instanceRole,
           userData: ec2.UserData.forLinux(),
           blockDevices: [
             {
               deviceName: '/dev/xvda',
-              volume: ec2.BlockDeviceVolume.ebs(20, {
+              volume: ec2.BlockDeviceVolume.ebs(30, {
                 encrypted: true,
                 volumeType: ec2.EbsDeviceVolumeType.GP3,
                 deleteOnTermination: true,
@@ -125,6 +125,14 @@ export class ComputeStack extends cdk.Stack {
             },
           ],
         });
+        
+        // Add basic setup commands (without Hasura)
+        const userData = this.instance.userData;
+        userData.addCommands(
+          'yum update -y',
+          'yum install -y git nodejs npm',
+          'echo "EC2 instance setup complete"'
+        );
         
         // Output instance ID
         new cdk.CfnOutput(this, 'InstanceId', {

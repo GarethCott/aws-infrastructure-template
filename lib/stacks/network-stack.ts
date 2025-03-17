@@ -98,8 +98,14 @@ export class NetworkStack extends cdk.Stack {
     // Allow Hasura and application access
     this.applicationSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(8080),
-      'Allow Hasura GraphQL access'
+      ec2.Port.tcp(80),
+      'Allow HTTP access'
+    );
+    
+    this.applicationSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      'Allow HTTPS access'
     );
 
     // Allow database access from application security group
@@ -108,6 +114,33 @@ export class NetworkStack extends cdk.Stack {
       ec2.Port.tcp(5432),
       'Allow PostgreSQL access from application'
     );
+    
+    // Allow direct database access for Hasura Cloud
+    // Hasura Cloud IP ranges (these are examples, check Hasura documentation for actual IPs)
+    const hasuraCloudIpRanges = [
+      '3.214.110.66/32',   // Example Hasura Cloud IP
+      '3.214.110.67/32',   // Example Hasura Cloud IP
+      '3.214.110.68/32',   // Example Hasura Cloud IP
+      '0.0.0.0/0'          // For development, allow all IPs (remove in production)
+    ];
+    
+    // Add Hasura Cloud IP ranges to database security group
+    for (const ipRange of hasuraCloudIpRanges) {
+      this.databaseSecurityGroup.addIngressRule(
+        ec2.Peer.ipv4(ipRange),
+        ec2.Port.tcp(5432),
+        `Allow PostgreSQL access from Hasura Cloud (${ipRange})`
+      );
+    }
+    
+    // Allow direct database access for development
+    if (config.environment === 'dev') {
+      this.databaseSecurityGroup.addIngressRule(
+        ec2.Peer.anyIpv4(),
+        ec2.Port.tcp(5432),
+        'Allow direct PostgreSQL access for development'
+      );
+    }
 
     // Add IP whitelist to security groups if specified
     if (config.network?.ipWhitelist && config.network.ipWhitelist.length > 0) {

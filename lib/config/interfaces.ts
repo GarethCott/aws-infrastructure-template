@@ -208,6 +208,42 @@ export interface DatabaseConfig {
    * @default 5432 for PostgreSQL, 3306 for MySQL
    */
   readonly port?: number;
+  
+  /**
+   * Maximum number of database connections
+   * @default 200
+   */
+  readonly maxConnections?: string;
+  
+  /**
+   * Shared buffers parameter for PostgreSQL
+   * @default 256MB
+   */
+  readonly sharedBuffers?: string;
+  
+  /**
+   * Work memory parameter for PostgreSQL
+   * @default 16MB
+   */
+  readonly workMem?: string;
+  
+  /**
+   * Maintenance work memory parameter for PostgreSQL
+   * @default 128MB
+   */
+  readonly maintenanceWorkMem?: string;
+  
+  /**
+   * Effective cache size parameter for PostgreSQL
+   * @default 512MB
+   */
+  readonly effectiveCacheSize?: string;
+  
+  /**
+   * Max prepared transactions parameter for PostgreSQL
+   * @default 0
+   */
+  readonly maxPreparedTransactions?: string;
 }
 
 /**

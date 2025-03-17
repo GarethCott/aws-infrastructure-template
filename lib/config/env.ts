@@ -58,17 +58,26 @@ export function createConfigFromEnv(): InfrastructureConfig {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_15,
       }),
-      instanceType: InstanceType.of(
-        InstanceClass.BURSTABLE4_GRAVITON, // Use Graviton for better price/performance
-        InstanceSize.SMALL,
-      ),
-      allocatedStorage: 20,
+      instanceType: getEnv('DB_INSTANCE_TYPE') ? 
+        InstanceType.of(
+          getEnv('DB_INSTANCE_TYPE').split('.')[1].startsWith('t') ? 
+            InstanceClass.BURSTABLE3 : InstanceClass.STANDARD5,
+          getEnv('DB_INSTANCE_TYPE').split('.')[2].toUpperCase() as InstanceSize
+        ) : 
+        InstanceType.of(InstanceClass.T3, InstanceSize.MEDIUM),
+      allocatedStorage: parseInt(getEnv('DB_ALLOCATED_STORAGE', '30')),
       publiclyAccessible: true,
       deletionProtection: false,
       multiAz: false,
       enableBackups: true,
       backupRetentionDays: 7,
       databaseName: getEnv('DB_NAME', 'mydb'),
+      maxConnections: getEnv('DB_MAX_CONNECTIONS', '200'),
+      sharedBuffers: getEnv('DB_SHARED_BUFFERS', '524288'),
+      workMem: getEnv('DB_WORK_MEM', '32768'),
+      maintenanceWorkMem: getEnv('DB_MAINTENANCE_WORK_MEM', '131072'),
+      effectiveCacheSize: getEnv('DB_EFFECTIVE_CACHE_SIZE', '1048576'),
+      maxPreparedTransactions: getEnv('DB_MAX_PREPARED_TRANSACTIONS', '100'),
     },
     
     // Authentication configuration
@@ -93,10 +102,13 @@ export function createConfigFromEnv(): InfrastructureConfig {
     // Compute configuration
     compute: {
       createCompute: true,
-      instanceType: InstanceType.of(
-        InstanceClass.BURSTABLE4_GRAVITON,
-        InstanceSize.SMALL,
-      ),
+      instanceType: getEnv('EC2_INSTANCE_TYPE') ? 
+        InstanceType.of(
+          getEnv('EC2_INSTANCE_TYPE').startsWith('t3') ? 
+            InstanceClass.BURSTABLE3 : InstanceClass.BURSTABLE2,
+          getEnv('EC2_INSTANCE_TYPE').split('.')[1].toLowerCase() as InstanceSize
+        ) : 
+        InstanceType.of(InstanceClass.T3, InstanceSize.SMALL),
       useAutoScaling: false, // No auto-scaling group to stay within free tier
       minInstances: 1,
       maxInstances: 1,

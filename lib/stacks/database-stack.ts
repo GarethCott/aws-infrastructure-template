@@ -65,14 +65,20 @@ export class DatabaseStack extends cdk.Stack {
           version: rds.PostgresEngineVersion.VER_15,
         }),
         parameters: {
-          'max_connections': '200',
-          'shared_buffers': '256MB',
-          'work_mem': '16MB',
-          'maintenance_work_mem': '128MB',
-          'effective_cache_size': '512MB',
-          'max_prepared_transactions': '0',
-          'statement_timeout': '60000',  // 60 seconds
+          'max_connections': config.database?.maxConnections || '200',
+          'shared_buffers': '524288',  // 512MB in KB
+          'work_mem': '32768',         // 32MB in KB
+          'maintenance_work_mem': '131072', // 128MB in KB
+          'effective_cache_size': '1048576', // 1GB in KB
+          'max_prepared_transactions': config.database?.maxPreparedTransactions || '100',  // Required for Hasura
+          'statement_timeout': '120000',  // 120 seconds (increased for Hasura Cloud)
           'idle_in_transaction_session_timeout': '300000',  // 5 minutes
+          'wal_buffers': '16384',  // 16MB in KB
+          'random_page_cost': '1.1',  // Optimized for SSD storage
+          'checkpoint_timeout': '600',  // 10 minutes
+          'checkpoint_completion_target': '0.9',  // Spread checkpoint writes
+          'autovacuum': 'on',  // Ensure autovacuum is enabled
+          'log_min_duration_statement': '1000',  // Log slow queries (1 second)
         },
       });
       
@@ -83,11 +89,11 @@ export class DatabaseStack extends cdk.Stack {
         'Allow all incoming traffic on PostgreSQL port'
       );
       
-      // Set instance type to Graviton for better price/performance
-      const instanceType = config.database.instanceType || 
-        ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.SMALL);
+      // Set instance type based on configuration
+      const instanceType = config.database?.instanceType || 
+        ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM);
       
-      const allocatedStorage = config.database.allocatedStorage || 20;
+      const allocatedStorage = config.database?.allocatedStorage || 30;
       
       const backupRetention = config.database.backupRetentionDays || 
         (config.environment === 'prod' ? 30 : 7);
